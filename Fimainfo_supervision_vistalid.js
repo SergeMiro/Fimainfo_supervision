@@ -282,10 +282,10 @@ async function reqSelectCampaignData() {
 
 	switch (customer_id) {
 		case 7:
-			tableName = 'Fimainfo_FullFilSMS_Supervision_Campagnes_JMJ';
+			tableName = 'Fimainfo_FullFilSMS_Supervision_campaigns_JMJ';
 			break;
 		case 9:
-			tableName = 'Fimainfo_FullFilSMS_Supervision_Campagnes_DEV-FIMAINFO';
+			tableName = 'Fimainfo_FullFilSMS_Supervision_campaigns_DEV-FIMAINFO';
 			break;
 		case 30:
 			tableName = 'Fimainfo_FullFilSMS_Supervision_campaigns_Vistalid';
@@ -451,10 +451,6 @@ function ajouterIconeAvecPopup() {
 									<span class="segment-text">SMS</span>
 								</label>
 							</div>
-							<!-- Icône calculateur SMS -->
-							<div class="sms-calculator-icon" id="sms-calculator-btn" title="Calculateur de coût SMS" style="display: none;">
-								<span class="material-icons-round">calculate</span>
-							</div>
 						</div>
 						<div class="container-big">
 						</div>
@@ -607,8 +603,23 @@ function ajouterIconeAvecPopup() {
 					tabsContainer.style.display = 'block';
 				}
 
-				// Afficher par défaut le premier sous-onglet (période)
-				showSmsSubTab('periode');
+				// Restaurer l'onglet sauvegardé au lieu de forcer 'periode'
+				const savedTab = loadActiveTab();
+				showSmsSubTab(savedTab);
+
+				// Mettre à jour visuellement l'onglet actif
+				const periodeTab = popup.querySelector('.tab-item[data-tab="periode"]');
+				const serviceTab = popup.querySelector('.tab-item[data-tab="service"]');
+
+				if (periodeTab && serviceTab) {
+					if (savedTab === 'service') {
+						periodeTab.classList.remove('active');
+						serviceTab.classList.add('active');
+					} else {
+						serviceTab.classList.remove('active');
+						periodeTab.classList.add('active');
+					}
+				}
 			}
 		});
 	}
@@ -695,14 +706,50 @@ function ajouterIconeAvecPopup() {
 			if (smsContent) smsContent.style.display = 'block';
 			if (campaignsContent) campaignsContent.style.display = 'none';
 
+			// Restaurer l'état des boutons Clients/SMS pour l'onglet période
+			const savedCountType = loadCountTypeState('periode');
+			const periodeClientsBtn = popup.querySelector('#periode-clients');
+			const periodeSmsBtn = popup.querySelector('#periode-sms');
+
+			if (periodeClientsBtn && periodeSmsBtn) {
+				if (savedCountType === 'sms') {
+					periodeSmsBtn.checked = true;
+					periodeClientsBtn.checked = false;
+					currentCountType = 'sms';
+				} else {
+					periodeClientsBtn.checked = true;
+					periodeSmsBtn.checked = false;
+					currentCountType = 'clients';
+				}
+			}
+
 			setTimeout(() => {
 				if (chart) {
 					chart.resize();
+				} else {
+					showEchartsGraph();
 				}
 			}, 100);
 		} else if (tabType === 'service') {
 			if (smsContent) smsContent.style.display = 'none';
 			if (campaignsContent) campaignsContent.style.display = 'block';
+
+			// Restaurer l'état des boutons Clients/SMS pour l'onglet service
+			const savedServiceCountType = loadCountTypeState('service');
+			const serviceClientsBtn = popup.querySelector('#service-clients');
+			const serviceSmsBtn = popup.querySelector('#service-sms');
+
+			if (serviceClientsBtn && serviceSmsBtn) {
+				if (savedServiceCountType === 'sms') {
+					serviceSmsBtn.checked = true;
+					serviceClientsBtn.checked = false;
+					currentServiceCountType = 'sms';
+				} else {
+					serviceClientsBtn.checked = true;
+					serviceSmsBtn.checked = false;
+					currentServiceCountType = 'clients';
+				}
+			}
 
 			setTimeout(() => {
 				showCampaignsGraph();
@@ -736,243 +783,47 @@ function ajouterIconeAvecPopup() {
 
 	consoleText([greeting], 'text', ['#eae8ed']);
 
-	// Initialiser le calculateur SMS
-	initSmsCalculator();
 
-	// Initialiser la persistance des boutons Clients/SMS
-	initCountTypeTogglePersistence();
 
-	// Initialiser la persistance de l'onglet actif
-	initActiveTabPersistence();
+	// Initialiser la persistance des boutons Clients/SMS et de l'onglet actif
+	// Appeler après un délai pour s'assurer que tous les éléments sont créés
+	setTimeout(() => {
+		initCountTypeTogglePersistence();
+		initActiveTabPersistence();
+
+		// Si l'onglet SMS est déjà sélectionné (par défaut), appliquer immédiatement l'état
+		if (smsRadio && smsRadio.checked) {
+			const savedTab = loadActiveTab();
+
+			// Mettre à jour visuellement l'onglet actif
+			const periodeTab = popup.querySelector('.tab-item[data-tab="periode"]');
+			const serviceTab = popup.querySelector('.tab-item[data-tab="service"]');
+
+			if (periodeTab && serviceTab) {
+				if (savedTab === 'service') {
+					periodeTab.classList.remove('active');
+					serviceTab.classList.add('active');
+				} else {
+					serviceTab.classList.remove('active');
+					periodeTab.classList.add('active');
+				}
+			}
+
+			// Appliquer l'état après avoir mis à jour l'affichage visuel
+			showSmsSubTab(savedTab);
+		}
+	}, 100);
 }
 
-// ====================== CALCULATEUR SMS ============
-// Fonction d'initialisation du calculateur SMS
-function initSmsCalculator() {
-	// Créer le popup HTML
-	const calculatorHtml = `
-		<div id="sms-calculator-popup" class="sms-calculator-popup">
-			<div class="calculator-overlay"></div>
-			<div class="calculator-content">
-				<div class="calculator-header">
-					<h3><span class="material-icons-round">calculate</span> Calculateur de coût SMS</h3>
-					<button class="calculator-close" id="calculator-close-btn">
-						<span class="material-icons-round">close</span>
-					</button>
-				</div>
-				
-				<!-- Première ligne: Prix et Période -->
-				<div class="calculator-row">
-					<div class="price-section">
-						<label for="sms-price">Prix SMS</label>
-						<input type="text" id="sms-price" class="price-input" placeholder="0,13€" value="0,13€">
-					</div>
-					<div class="period-section">
-						<label for="period-select">Période</label>
-						<select id="period-select" class="period-dropdown">
-							<option value="today">Jour en cours</option>
-							<option value="week">Semaine en cours</option>
-							<option value="month" selected>Mois en cours</option>
-							<option value="previousMonth">Mois précédent</option>
-							<option value="last3months">3 derniers mois</option>
-							<option value="year">Année en cours</option>
-							<option value="previousYear">Année précédente</option>
-						</select>
-					</div>
-				</div>
-				
-				<!-- Deuxième ligne: Badges de campagne -->
-				<div class="calculator-row">
-					<div class="campaign-badges">
-						<label>Campagnes</label>
-						<div class="badges-container">
-							<button class="campaign-badge active" data-campaign="TOUS">TOUS</button>
-							<button class="campaign-badge" data-campaign="PROSPECTION">PROSPECTION</button>
-							<button class="campaign-badge" data-campaign="LIVRAISON">LIVRAISON</button>
-							<button class="campaign-badge" data-campaign="APPEL SUIVI">APPEL SUIVI</button>
-							<button class="campaign-badge" data-campaign="RENOUVELLEMENT">RENOUVELLEMENT</button>
-							<button class="campaign-badge" data-campaign="RECRUTEMENT (RH)">RECRUTEMENT (RH)</button>
-						</div>
-					</div>
-				</div>
-				
-				<!-- Troisième ligne: Résultat du calcul -->
-				<div class="calculator-result">
-					<div class="result-display" id="calculation-result">
-						<span class="result-text">0 SMS x 0,13€ = 0,00€</span>
-					</div>
-				</div>
-			</div>
-		</div>
-	`;
 
-	// Ajouter le HTML au body
-	window.top.document.body.insertAdjacentHTML('beforeend', calculatorHtml);
-
-	// Ajouter les event listeners
-	const calculatorBtn = window.top.document.getElementById('sms-calculator-btn');
-	const calculatorPopup = window.top.document.getElementById('sms-calculator-popup');
-	const calculatorClose = window.top.document.getElementById('calculator-close-btn');
-	const calculatorOverlay = calculatorPopup.querySelector('.calculator-overlay');
-
-	// Ouvrir le popup
-	calculatorBtn.addEventListener('click', async () => {
-		calculatorPopup.classList.add('active');
-
-		// S'assurer que les données de campagne sont chargées
-		if (!campaignData || !campaignData.campaigns || !campaignData.campaigns.length) {
-			// console.log('📊 Chargement des données de campagne pour le calculateur...');
-			await reqSelectCampaignData();
-		}
-
-		updateCalculation();
-	});
-
-	// Fermer le popup
-	calculatorClose.addEventListener('click', () => {
-		calculatorPopup.classList.remove('active');
-	});
-
-	calculatorOverlay.addEventListener('click', () => {
-		calculatorPopup.classList.remove('active');
-	});
-
-	// Event listeners pour les badges de campagne
-	const campaignBadges = calculatorPopup.querySelectorAll('.campaign-badge');
-	campaignBadges.forEach(badge => {
-		badge.addEventListener('click', () => {
-			// Retirer la classe active de tous les badges
-			campaignBadges.forEach(b => b.classList.remove('active'));
-			// Ajouter la classe active au badge cliqué
-			badge.classList.add('active');
-			// Mettre à jour le calcul
-			updateCalculation();
-		});
-	});
-
-	// Event listeners pour les changements de prix et période
-	const priceInput = calculatorPopup.querySelector('#sms-price');
-	const periodSelect = calculatorPopup.querySelector('#period-select');
-
-	// Gestion améliorée de l'input prix
-	priceInput.addEventListener('input', (e) => {
-		// Permettre seulement les chiffres, virgules, points et le symbole €
-		let value = e.target.value.replace(/[^0-9,.€]/g, '');
-
-		// S'assurer qu'il n'y a qu'un seul séparateur décimal
-		const commaCount = (value.match(/,/g) || []).length;
-		const dotCount = (value.match(/\./g) || []).length;
-
-		if (commaCount > 1) {
-			value = value.replace(/,(?=.*,)/g, '');
-		}
-		if (dotCount > 1) {
-			value = value.replace(/\.(?=.*\.)/g, '');
-		}
-
-		// Ajouter € à la fin si pas déjà présent
-		if (value && !value.includes('€')) {
-			value += '€';
-		}
-
-		e.target.value = value;
-		updateCalculation();
-	});
-
-	// Gestion du focus pour sélectionner le texte
-	priceInput.addEventListener('focus', (e) => {
-		// Sélectionner tout le texte sauf le symbole €
-		const value = e.target.value;
-		if (value.includes('€')) {
-			e.target.setSelectionRange(0, value.length - 1);
-		} else {
-			e.target.select();
-		}
-	});
-
-	periodSelect.addEventListener('change', updateCalculation);
-}
-
-// Fonction pour mettre à jour le calcul
-function updateCalculation() {
-	const calculatorPopup = window.top.document.getElementById('sms-calculator-popup');
-	if (!calculatorPopup) return;
-
-	const priceInput = calculatorPopup.querySelector('#sms-price');
-	const periodSelect = calculatorPopup.querySelector('#period-select');
-	const activeBadge = calculatorPopup.querySelector('.campaign-badge.active');
-	const resultDisplay = calculatorPopup.querySelector('#calculation-result .result-text');
-
-	// Extraire le prix (enlever le symbole € et remplacer , par .)
-	let priceText = priceInput.value.replace('€', '').replace(',', '.');
-	let price = parseFloat(priceText) || 0;
-
-	// Obtenir la période sélectionnée
-	const selectedPeriod = periodSelect.value;
-	const selectedCampaign = activeBadge.dataset.campaign;
-
-	// Calculer le nombre de SMS selon la période et la campagne
-	let smsCount = getSmsCount(selectedPeriod, selectedCampaign);
-
-	// Calculer le coût total
-	let totalCost = smsCount * price;
-
-	// Formater l'affichage
-	let formattedPrice = price.toFixed(2).replace('.', ',') + '€';
-	let formattedTotal = totalCost.toFixed(2).replace('.', ',') + '€';
-
-	// Mettre à jour l'affichage
-	resultDisplay.textContent = `${smsCount} SMS x ${formattedPrice} = ${formattedTotal}`;
-}
-
-// Fonction pour obtenir le nombre de SMS selon la période et la campagne
-function getSmsCount(period, campaign) {
-	// Mapping des périodes vers les champs de données
-	const periodMapping = {
-		'today': 'SmsCountToday',
-		'week': 'SmsCountCurrentWeek',
-		'month': 'SmsCountCurrentMonth',
-		'previousMonth': 'SmsCountPreviousMonth',
-		'last3months': 'SmsCountLast3Months',
-		'year': 'SmsCountCurrentYear',
-		'previousYear': 'SmsCountPreviousYear'
-	};
-
-	const fieldName = periodMapping[period];
-	if (!fieldName || !campaignData || !campaignData.campaigns) {
-		return 0;
-	}
-
-	let totalSms = 0;
-
-	if (campaign === 'TOUS') {
-		// Sommer tous les SMS de toutes les campagnes
-		campaignData.campaigns.forEach(camp => {
-			const smsValue = parseInt(camp[fieldName]) || 0;
-			totalSms += smsValue;
-		});
-	} else {
-		// Chercher la campagne spécifique
-		const specificCampaign = campaignData.campaigns.find(camp =>
-			camp.CampaignCategory && camp.CampaignCategory.trim() === campaign.trim()
-		);
-
-		if (specificCampaign) {
-			totalSms = parseInt(specificCampaign[fieldName]) || 0;
-		}
-	}
-
-	return totalSms;
-}
 
 // ====================== PERSISTANCE BOUTONS CLIENTS/SMS ============
 // Fonction d'initialisation de la persistance des boutons Clients/SMS
 function initCountTypeTogglePersistence() {
-	// Restaurer l'état des boutons depuis localStorage
+	// Initialiser les variables globales avec les valeurs sauvegardées
 	const periodeCountType = loadCountTypeState('periode');
 	const serviceCountType = loadCountTypeState('service');
 
-	// Initialiser les variables globales avec les valeurs sauvegardées
 	currentCountType = periodeCountType;
 	currentServiceCountType = serviceCountType;
 
@@ -980,27 +831,15 @@ function initCountTypeTogglePersistence() {
 	smsLegendState = loadLegendState(getLegendStorageKey('periode', currentCountType), defaultSmsLegendState);
 	campaignLegendState = loadLegendState(getLegendStorageKey('service', currentServiceCountType), defaultCampaignLegendState);
 
-	// Appliquer l'état sauvegardé pour l'onglet "par période"
+	// Ajouter les event listeners pour l'onglet "par période"
 	const periodeClientsBtn = window.top.document.getElementById('periode-clients');
 	const periodeSmsBtn = window.top.document.getElementById('periode-sms');
 
 	if (periodeClientsBtn && periodeSmsBtn) {
-		if (periodeCountType === 'sms') {
-			periodeSmsBtn.checked = true;
-			periodeClientsBtn.checked = false;
-			currentCountType = 'sms';
-		} else {
-			periodeClientsBtn.checked = true;
-			periodeSmsBtn.checked = false;
-			currentCountType = 'clients';
-		}
-
-		// Ajouter les event listeners
 		periodeClientsBtn.addEventListener('change', () => {
 			if (periodeClientsBtn.checked) {
 				currentCountType = 'clients';
 				saveCountTypeState('periode', 'clients');
-				// Recharger les données de légende pour ce type
 				smsLegendState = loadLegendState(getLegendStorageKey('periode', 'clients'), defaultSmsLegendState);
 				updateSmsChart();
 			}
@@ -1010,34 +849,21 @@ function initCountTypeTogglePersistence() {
 			if (periodeSmsBtn.checked) {
 				currentCountType = 'sms';
 				saveCountTypeState('periode', 'sms');
-				// Recharger les données de légende pour ce type
 				smsLegendState = loadLegendState(getLegendStorageKey('periode', 'sms'), defaultSmsLegendState);
 				updateSmsChart();
 			}
 		});
 	}
 
-	// Appliquer l'état sauvegardé pour l'onglet "par service"
+	// Ajouter les event listeners pour l'onglet "par service"
 	const serviceClientsBtn = window.top.document.getElementById('service-clients');
 	const serviceSmsBtn = window.top.document.getElementById('service-sms');
 
 	if (serviceClientsBtn && serviceSmsBtn) {
-		if (serviceCountType === 'sms') {
-			serviceSmsBtn.checked = true;
-			serviceClientsBtn.checked = false;
-			currentServiceCountType = 'sms';
-		} else {
-			serviceClientsBtn.checked = true;
-			serviceSmsBtn.checked = false;
-			currentServiceCountType = 'clients';
-		}
-
-		// Ajouter les event listeners
 		serviceClientsBtn.addEventListener('change', () => {
 			if (serviceClientsBtn.checked) {
 				currentServiceCountType = 'clients';
 				saveCountTypeState('service', 'clients');
-				// Recharger les données de légende pour ce type
 				campaignLegendState = loadLegendState(getLegendStorageKey('service', 'clients'), defaultCampaignLegendState);
 				updateCampaignChart();
 			}
@@ -1047,7 +873,6 @@ function initCountTypeTogglePersistence() {
 			if (serviceSmsBtn.checked) {
 				currentServiceCountType = 'sms';
 				saveCountTypeState('service', 'sms');
-				// Recharger les données de légende pour ce type
 				campaignLegendState = loadLegendState(getLegendStorageKey('service', 'sms'), defaultCampaignLegendState);
 				updateCampaignChart();
 			}
@@ -1058,60 +883,25 @@ function initCountTypeTogglePersistence() {
 // ====================== PERSISTANCE ONGLET ACTIF ============
 // Fonction d'initialisation de la persistance de l'onglet actif
 function initActiveTabPersistence() {
-	// Charger l'onglet sauvegardé
-	const savedTab = loadActiveTab();
+	// La restauration de l'onglet est maintenant gérée dans showSmsSubTab()
+	// Cette fonction ne fait plus que configurer les event listeners pour la sauvegarde
 
-	// Attendre que les éléments soient créés
-	setTimeout(() => {
-		const periodeTab = window.top.document.querySelector('.tab-item[data-tab="periode"]');
-		const serviceTab = window.top.document.querySelector('.tab-item[data-tab="service"]');
+	const popup = window.top.document.querySelector('.fimainfo-popup');
+	if (!popup) return;
 
-		if (periodeTab && serviceTab) {
-			// Restaurer l'onglet actif
-			if (savedTab === 'service') {
-				// Activer l'onglet service
-				periodeTab.classList.remove('active');
-				serviceTab.classList.add('active');
+	const periodeTab = popup.querySelector('.tab-item[data-tab="periode"]');
+	const serviceTab = popup.querySelector('.tab-item[data-tab="service"]');
 
-				// Afficher le contenu correspondant
-				const periodeContent = window.top.document.getElementById('periode-content');
-				const serviceContent = window.top.document.getElementById('service-content');
+	if (periodeTab && serviceTab) {
+		// Ajouter les event listeners pour sauvegarder les changements
+		periodeTab.addEventListener('click', () => {
+			saveActiveTab('periode');
+		});
 
-				if (periodeContent && serviceContent) {
-					periodeContent.style.display = 'none';
-					serviceContent.style.display = 'block';
-
-					// Afficher le graphique des services
-					showCampaignsGraph();
-				}
-			} else {
-				// Activer l'onglet période (par défaut)
-				serviceTab.classList.remove('active');
-				periodeTab.classList.add('active');
-
-				// Afficher le contenu correspondant
-				const periodeContent = window.top.document.getElementById('periode-content');
-				const serviceContent = window.top.document.getElementById('service-content');
-
-				if (periodeContent && serviceContent) {
-					serviceContent.style.display = 'none';
-					periodeContent.style.display = 'block';
-
-					// Afficher le graphique des périodes
-					showEchartsGraph();
-				}
-			}
-
-			// Ajouter les event listeners pour sauvegarder les changements
-			periodeTab.addEventListener('click', () => {
-				saveActiveTab('periode');
-			});
-
-			serviceTab.addEventListener('click', () => {
-				saveActiveTab('service');
-			});
-		}
-	}, 500); // Délai plus long pour s'assurer que tous les éléments sont créés
+		serviceTab.addEventListener('click', () => {
+			saveActiveTab('service');
+		});
+	}
 }
 
 // Fonction : le texte dans HEADER qui s'affiche
